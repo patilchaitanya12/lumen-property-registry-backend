@@ -11,7 +11,7 @@ class Unit(Base):
 
     unit_id: Mapped[str] = mapped_column(String(150), primary_key=True)
     property_id: Mapped[str | None] = mapped_column(String(150), unique=True, index=True)
-    unit_code: Mapped[str | None] = mapped_column(String(150), unique=True, index=True)
+    unit_code: Mapped[str | None] = mapped_column(String(150), index=True)
     unit_number: Mapped[str | None] = mapped_column(String(100))
 
     location_id: Mapped[str | None] = mapped_column(
