@@ -25,20 +25,30 @@ def list_locations(
         .limit(page_size)
     ).all()
 
-    unit_counts = dict(
-        db.execute(
+    location_ids = [
+        location.location_id
+        for location in locations
+    ]
+
+    unit_counts: dict[str, int] = {}
+
+    if location_ids:
+        count_rows = db.execute(
             select(
                 Unit.location_id,
                 func.count(Unit.unit_id),
             )
             .where(
-                Unit.location_id.in_(
-                    [location.location_id for location in locations]
-                )
+                Unit.location_id.in_(location_ids)
             )
             .group_by(Unit.location_id)
         ).all()
-    )
+
+        unit_counts = {
+            location_id: count
+            for location_id, count in count_rows
+            if location_id is not None
+        }
 
     return {
         "items": [
@@ -72,11 +82,15 @@ def get_location(
     if location is None:
         return None
 
-    unit_count = db.scalar(
-        select(func.count()).select_from(Unit).where(
-            Unit.location_id == location_id
+    units = db.scalars(
+        select(Unit)
+        .where(Unit.location_id == location_id)
+        .order_by(
+            Unit.unit_code,
+            Unit.unit_number,
+            Unit.unit_id,
         )
-    ) or 0
+    ).all()
 
     return {
         "location_id": location.location_id,
@@ -86,5 +100,15 @@ def get_location(
         "project_land": location.project_land,
         "building_no": location.building_no,
         "building_name": location.building_name,
-        "unit_count": unit_count,
+        "unit_count": len(units),
+        "units": [
+            {
+                "unit_id": unit.unit_id,
+                "property_id": unit.property_id,
+                "unit_code": unit.unit_code,
+                "unit_number": unit.unit_number,
+                "property_type": unit.property_type,
+            }
+            for unit in units
+        ],
     }
