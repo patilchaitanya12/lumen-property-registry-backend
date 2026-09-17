@@ -2,7 +2,6 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Contact, Owner, OwnershipHistory, Unit
-from app.services.dashboard_service import get_dashboard_stats
 
 
 def list_owners(
@@ -29,7 +28,9 @@ def list_owners(
             )
         ) or 0
     else:
-        total = get_dashboard_stats()["owners"]
+        total = db.scalar(
+            select(func.count()).select_from(Owner)
+        ) or 0
 
     owners = db.scalars(
         stmt
