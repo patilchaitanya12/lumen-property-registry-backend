@@ -11,7 +11,11 @@ class Owner(Base):
 
     owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     record_id: Mapped[str | None] = mapped_column(String(150), unique=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        index=True,
+    )
     normalized_name: Mapped[str | None] = mapped_column(String(255), index=True)
     owner_type: Mapped[str | None] = mapped_column(String(50))
     country: Mapped[str | None] = mapped_column(String(100))
