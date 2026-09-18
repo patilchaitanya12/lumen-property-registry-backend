@@ -23,4 +23,7 @@ data/processed/
 .idea/
 
 # OS
-.DS_Store
+.DS_Storescripts/backfill_contacts.py
+
+# One-time migration scripts
+scripts/backfill_contacts.py
