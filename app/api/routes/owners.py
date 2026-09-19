@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.schemas.owner import OwnerCreate, OwnerResponse, OwnerUpdate
 from app.services import owner_service
 
 router = APIRouter(prefix="/api/owners", tags=["Owners"])
@@ -12,6 +13,7 @@ def list_owners(
     q: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
+    include_inactive: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
     return owner_service.list_owners(
@@ -19,7 +21,30 @@ def list_owners(
         query=q,
         page=page,
         page_size=page_size,
+        include_inactive=include_inactive,
     )
+
+
+@router.post(
+    "",
+    response_model=OwnerResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_owner(
+    data: OwnerCreate,
+    db: Session = Depends(get_db),
+):
+    try:
+        return owner_service.create_owner(
+            db=db,
+            data=data,
+        )
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/{owner_id}")
@@ -28,6 +53,59 @@ def get_owner(
     db: Session = Depends(get_db),
 ):
     owner = owner_service.get_owner(
+        db=db,
+        owner_id=owner_id,
+    )
+
+    if owner is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Owner not found",
+        )
+
+    return owner
+
+
+@router.patch(
+    "/{owner_id}",
+    response_model=OwnerResponse,
+)
+def update_owner(
+    owner_id: str,
+    data: OwnerUpdate,
+    db: Session = Depends(get_db),
+):
+    try:
+        owner = owner_service.update_owner(
+            db=db,
+            owner_id=owner_id,
+            data=data,
+        )
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    if owner is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Owner not found",
+        )
+
+    return owner
+
+
+@router.delete(
+    "/{owner_id}",
+    response_model=OwnerResponse,
+)
+def delete_owner(
+    owner_id: str,
+    db: Session = Depends(get_db),
+):
+    owner = owner_service.deactivate_owner(
         db=db,
         owner_id=owner_id,
     )
