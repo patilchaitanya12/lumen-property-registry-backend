@@ -163,3 +163,21 @@ def get_owner_history(
         "items": history,
         "total": len(history),
     }
+
+@router.get("/{owner_id}/360")
+def get_owner_360(
+    owner_id: str,
+    db: Session = Depends(get_db),
+):
+    owner = owner_service.get_owner_360(
+        db=db,
+        owner_id=owner_id,
+    )
+
+    if owner is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Owner not found",
+        )
+
+    return owner

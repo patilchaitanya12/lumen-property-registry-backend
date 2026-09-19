@@ -1,7 +1,14 @@
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Contact, Owner, OwnershipHistory, Unit
+from app.models import (
+    Contact,
+    Order,
+    OrderParty,
+    Owner,
+    OwnershipHistory,
+    Unit,
+)
 from app.schemas.owner import OwnerCreate, OwnerUpdate
 
 
@@ -294,3 +301,217 @@ def _generate_owner_id(
             sequence = 1
 
     return f"{prefix}-{sequence:04d}"
+
+def get_owner_360(
+    db: Session,
+    owner_id: str,
+) -> dict | None:
+    owner = db.get(Owner, owner_id)
+
+    if owner is None:
+        return None
+
+    # ---------------------------------------------------------
+    # Contacts
+    # ---------------------------------------------------------
+    contacts = db.scalars(
+        select(Contact)
+        .where(Contact.owner_id == owner_id)
+        .order_by(
+            Contact.is_primary.desc(),
+            Contact.contact_id,
+        )
+    ).all()
+
+    # ---------------------------------------------------------
+    # Ownership / Units
+    # ---------------------------------------------------------
+    unit_rows = db.execute(
+        select(Unit, OwnershipHistory)
+        .join(
+            OwnershipHistory,
+            OwnershipHistory.unit_id == Unit.unit_id,
+        )
+        .where(
+            OwnershipHistory.owner_id == owner_id
+        )
+        .order_by(Unit.unit_id)
+    ).all()
+
+    units = []
+
+    for unit, history in unit_rows:
+        units.append(
+            {
+                "unit_id": unit.unit_id,
+                "property_id": unit.property_id,
+                "unit_code": unit.unit_code,
+                "unit_number": unit.unit_number,
+                "property_type": unit.property_type,
+                "size": float(unit.size) if unit.size is not None else None,
+                "dm_no": unit.dm_no,
+                "dm_sub_no": unit.dm_sub_no,
+                "land_sub_number": unit.land_sub_number,
+                "location_id": unit.location_id,
+                "ownership_start_date": history.start_date,
+                "ownership_end_date": history.end_date,
+            }
+        )
+
+    # ---------------------------------------------------------
+    # Ownership history
+    # ---------------------------------------------------------
+    history_rows = db.scalars(
+        select(OwnershipHistory)
+        .where(
+            OwnershipHistory.owner_id == owner_id
+        )
+        .order_by(
+            OwnershipHistory.start_date.desc().nullslast(),
+            OwnershipHistory.ownership_history_id.desc(),
+        )
+    ).all()
+
+    ownership_history = [
+        {
+            "history_id": row.ownership_history_id,
+            "unit_id": row.unit_id,
+            "start_date": row.start_date,
+            "end_date": row.end_date,
+            "source_order_id": row.source_order_id,
+        }
+        for row in history_rows
+    ]
+
+    # ---------------------------------------------------------
+    # Orders
+    #
+    # Orders are included only if real order/order-party
+    # records exist. No synthetic transactions are created.
+    # ---------------------------------------------------------
+    order_rows = db.execute(
+        select(Order)
+        .join(
+            OrderParty,
+            OrderParty.order_id == Order.order_id,
+        )
+        .where(
+            OrderParty.owner_id == owner_id
+        )
+        .order_by(
+            Order.transaction_date.desc().nullslast(),
+            Order.order_id,
+        )
+    ).scalars().unique().all()
+
+    orders = [
+        {
+            "order_id": order.order_id,
+            "source_regis": order.source_regis,
+            "unit_id": order.unit_id,
+            "location_id": order.location_id,
+            "procedure_name": order.procedure_name,
+            "procedure_value": order.procedure_value,
+            "transaction_date": order.transaction_date,
+        }
+        for order in order_rows
+    ]
+
+    # ---------------------------------------------------------
+    # Portfolio summary
+    # ---------------------------------------------------------
+    calculated_property_count = len(
+        {
+            unit["unit_id"]
+            for unit in units
+        }
+    )
+
+    communities = (
+        [
+            value.strip()
+            for value in owner.community_list.split(",")
+            if value.strip()
+        ]
+        if owner.community_list
+        else []
+    )
+
+    buildings = (
+        [
+            value.strip()
+            for value in owner.buildings_list.split(",")
+            if value.strip()
+        ]
+        if owner.buildings_list
+        else []
+    )
+
+    # ---------------------------------------------------------
+    # Final 360 response
+    # ---------------------------------------------------------
+    return {
+        "owner": {
+            "owner_id": owner.owner_id,
+            "record_id": owner.record_id,
+            "name": owner.name,
+            "normalized_name": owner.normalized_name,
+            "first_name": owner.first_name,
+            "last_name": owner.last_name,
+            "title": owner.title,
+            "owner_type": owner.owner_type,
+            "vip_tier": owner.vip_tier,
+            "gender": owner.gender,
+            "gender_source": owner.gender_source,
+            "country": owner.country,
+            "id_number": owner.id_number,
+            "uae_id_number": owner.uae_id_number,
+            "unified_number": owner.unified_number,
+            "passport_expiry_date": owner.passport_expiry_date,
+            "birth_date": owner.birth_date,
+            "is_reachable": owner.is_reachable,
+            "is_active": owner.is_active,
+            "notes": owner.notes,
+        },
+
+        "contacts": [
+            {
+                "contact_id": contact.contact_id,
+                "type": contact.contact_type,
+                "value": contact.contact_value,
+                "is_primary": contact.is_primary,
+            }
+            for contact in contacts
+        ],
+
+        "portfolio": {
+            "source_property_count": owner.property_count,
+            "calculated_property_count": calculated_property_count,
+            "communities_owned": owner.communities_owned,
+            "communities": communities,
+            "buildings": buildings,
+            "is_multi_property": owner.is_multi_property,
+            "is_portfolio_investor": owner.is_portfolio_investor,
+            "has_cross_community": owner.has_cross_community,
+            "portfolio_tier": owner.portfolio_tier,
+            "has_plot": owner.has_plot,
+            "has_apartment": owner.has_apartment,
+            "has_villa": owner.has_villa,
+        },
+
+        "units": units,
+
+        "ownership_history": ownership_history,
+
+        "orders": orders,
+
+        "source": {
+            "source_community": owner.source_community,
+            "source_file": owner.source_file,
+        },
+
+        "audit": {
+            "created_at": owner.created_at,
+            "updated_at": owner.updated_at,
+        },
+    }
