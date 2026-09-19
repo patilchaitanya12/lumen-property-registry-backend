@@ -62,6 +62,15 @@ class Owner(Base):
     # Contact reachability
     is_reachable: Mapped[bool | None] = mapped_column(Boolean)
 
+    # Lifecycle
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+        index=True,
+    )
+
     notes: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(
